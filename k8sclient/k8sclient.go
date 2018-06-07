@@ -29,7 +29,27 @@ import (
 	"github.com/containernetworking/cni/libcni"
 	"github.com/containernetworking/cni/pkg/skel"
 	cnitypes "github.com/containernetworking/cni/pkg/types"
+	"os/exec" // TEMPORARY.
 )
+
+// ------------------------- TEMPORARY REMOVE THESE LATER
+
+func logger(input string) {
+
+  // exec_command :=
+  // os.Stderr.WriteString("!trace alive The containerid: |" + exec_command + "|||\n")
+
+  // This is a total hack.
+  // cmd := exec.Command("/bin/bash", "-c", "echo \"multus-debug: " + input + "\" | systemd-cat")
+
+  // This is even MORE of a hack.
+  cmd := exec.Command("/bin/bash", "-c", "echo '[multus-debug] "+input+"' >> /opt/cni/bin/multus-debug.log")
+  cmd.Start()
+
+}
+
+// ------------------------- end TEMPORARY REMOVE THESE LATER
+
 
 // NoK8sNetworkError indicates error, no network in kubernetes
 type NoK8sNetworkError struct {
@@ -253,6 +273,9 @@ func getNetObject(net types.Network, primary bool, ifname string, confdir string
 	var config string
 	var err error
 
+	logger(fmt.Sprintf("!trace getNetObject net: %v",net))
+
+
 	if (types.NetworkSpec{}) == net.Spec {
 		config, err = getCNIConfig(net.Metadata.Name, primary, ifname, confdir)
 		if err != nil {
@@ -281,15 +304,23 @@ func getnetplugin(client *kubernetes.Clientset, networkinfo map[string]interface
 
 	tprclient := fmt.Sprintf("/apis/kubernetes.cni.cncf.io/v1/namespaces/%s/networks/%s", netNsName, networkname)
 
+	// !bang
+	logger(fmt.Sprintf("!trace bang tprclient: %v",tprclient))
+
 	netobjdata, err := client.ExtensionsV1beta1().RESTClient().Get().AbsPath(tprclient).DoRaw()
 	if err != nil {
 		return "", fmt.Errorf("getnetplugin: failed to get CRD (result: %s), refer Multus README.md for the usage guide: %v", netobjdata, err)
 	}
 
+	logger(fmt.Sprintf("!trace bang netobjdata: %s",netobjdata))
+
+
 	netobj := types.Network{}
 	if err := json.Unmarshal(netobjdata, &netobj); err != nil {
 		return "", fmt.Errorf("getnetplugin: failed to get the netplugin data: %v", err)
 	}
+
+	logger(fmt.Sprintf("!trace bang netobj: %v",netobj))
 
 	ifnameRequest := ""
 	if networkinfo["interfaceRequest"] != nil {
@@ -339,6 +370,9 @@ func getMultusDelegates(delegate string) ([]map[string]interface{}, error) {
 	tmpNetconf := &types.NetConf{}
 	tmpDelegate := "{\"delegates\": " + delegate + "}"
 
+	logger(fmt.Sprintf("!trace delegate: %v",delegate))
+	logger(fmt.Sprintf("!trace tmpDelegate: %v",tmpDelegate))
+
 	if delegate == "" {
 		return nil, fmt.Errorf("getMultusDelegates: TPR network obj data can't be empty")
 	}
@@ -358,39 +392,64 @@ func GetK8sNetwork(args *skel.CmdArgs, kubeconfig string, confdir string) ([]map
 	k8sArgs := types.K8sArgs{}
 	var podNet []map[string]interface{}
 
+	logger("!trace a")
+
 	err := cnitypes.LoadArgs(args.Args, &k8sArgs)
 	if err != nil {
+		logger(fmt.Sprintf("!trace a: %s",err))
 		return podNet, err
 	}
+
+	logger("!trace b")
 
 	k8sclient, err := createK8sClient(kubeconfig)
 	if err != nil {
+		logger(fmt.Sprintf("!trace b: %s",err))
 		return podNet, err
 	}
+
+	logger("!trace c")
 
 	netAnnot, err := getPodNetworkAnnotation(k8sclient, k8sArgs)
 	if err != nil {
+		logger(fmt.Sprintf("!trace c: %s",err))
 		return podNet, err
 	}
+	logger(fmt.Sprintf("!trace c netAnnot: %v",netAnnot))
+
+	logger("!trace d")
 
 	if len(netAnnot) == 0 {
+		logger("!trace d: no kubernetes network found")
 		return podNet, &NoK8sNetworkError{"no kubernetes network found"}
 	}
 
+	logger("!trace e")
+
 	netObjs, err := parsePodNetworkObject(netAnnot)
 	if err != nil {
+		logger(fmt.Sprintf("!trace e: %s",err))
 		return podNet, err
 	}
+	logger(fmt.Sprintf("!trace e podNet: %v",podNet))
+
+	logger("!trace f")
 
 	multusDelegates, err := getPodNetworkObj(k8sclient, netObjs, confdir)
 	if err != nil {
+		logger(fmt.Sprintf("!trace f: %s",err))
 		return podNet, err
 	}
 
+	logger("!trace g")
+
 	podNet, err = getMultusDelegates(multusDelegates)
 	if err != nil {
+		logger(fmt.Sprintf("!trace g: %s",err))
 		return podNet, err
 	}
+
+	logger("!trace h SUCCESS")
 
 	return podNet, nil
 }
