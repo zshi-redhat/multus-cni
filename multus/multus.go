@@ -150,13 +150,16 @@ func delPlugins(exec invoke.Exec, argIfname string, delegates []*types.DelegateN
 
 func cmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) (cnitypes.Result, error) {
 	var nopodnet bool
+	var kc *k8s.ClientInfo
+
 	n, err := types.LoadNetConf(args.StdinData)
 	if err != nil {
 		return nil, fmt.Errorf("err in loading netconf: %v", err)
 	}
 
 	if n.Kubeconfig != "" {
-		delegates, err := k8s.GetK8sNetwork(args, n.Kubeconfig, kubeClient, n.ConfDir)
+		var delegates []*types.DelegateNetConf
+		delegates, kc, err = k8s.GetK8sNetwork(args, n.Kubeconfig, kubeClient, n.ConfDir)
 		if err != nil {
 			if _, ok := err.(*k8s.NoK8sNetworkError); ok {
 				nopodnet = true
@@ -177,6 +180,7 @@ func cmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) (cn
 	}
 
 	var result, tmpResult cnitypes.Result
+	var netStatus []*types.NetworkStatus
 	lastIdx := 0
 	for idx, delegate := range n.Delegates {
 		lastIdx = idx
@@ -190,12 +194,30 @@ func cmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) (cn
 		if delegate.MasterPlugin || result == nil {
 			result = tmpResult
 		}
+
+		//create the network status, only in case Multus as kubeconfig
+		if n.Kubeconfig != "" {
+			delegateNetStatus, err := types.LoadNetworkStatus(tmpResult, delegate.Name, delegate.MasterPlugin)
+			if err != nil {
+				return nil, fmt.Errorf("Multus: Err rethe networks status: %v", err)
+			}
+
+			netStatus = append(netStatus, delegateNetStatus)
+		}
 	}
 
 	if err != nil {
 		// Ignore errors; DEL must be idempotent anyway
 		_ = delPlugins(exec, args.IfName, n.Delegates, lastIdx)
 		return nil, err
+	}
+
+	//set the network status annotation in apiserver, only in case Multus as kubeconfig
+	if n.Kubeconfig != "" {
+		err = k8s.SetNetworkStatus(kc, netStatus)
+		if err != nil {
+			return nil, fmt.Errorf("Multus: Err set the networks status: %v", err)
+		}
 	}
 
 	return result, nil
@@ -221,7 +243,7 @@ func cmdDel(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) err
 	}
 
 	if in.Kubeconfig != "" {
-		delegates, err := k8s.GetK8sNetwork(args, in.Kubeconfig, kubeClient, in.ConfDir)
+		delegates, _, err := k8s.GetK8sNetwork(args, in.Kubeconfig, kubeClient, in.ConfDir)
 		if err != nil {
 			if _, ok := err.(*k8s.NoK8sNetworkError); ok {
 				nopodnet = true
