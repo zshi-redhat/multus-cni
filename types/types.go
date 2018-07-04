@@ -37,7 +37,17 @@ type NetConf struct {
 	// RawDelegates is private to the NetConf class; use Delegates instead
 	RawDelegates []map[string]interface{} `json:"delegates"`
 	Delegates    []*DelegateNetConf       `json:"-"`
+	NetStatus    []*NetworkStatus         `json:"-"`
 	Kubeconfig   string                   `json:"kubeconfig"`
+}
+
+type NetworkStatus struct {
+	Name      string    `json:"name"`
+	Interface string    `json:"interface,omitempty"`
+	IPs       []string  `json:"ips,omitempty"`
+	Mac       string    `json:"mac,omitempty"`
+	Default   bool      `json:"default,omitempty"`
+	DNS       types.DNS `json:"dns,omitempty"`
 }
 
 type DelegateNetConf struct {

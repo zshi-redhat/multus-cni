@@ -36,6 +36,12 @@ type NoK8sNetworkError struct {
 	message string
 }
 
+type ClientInfo struct {
+	Client       KubeClient
+	Podnamespace string
+	Podname      string
+}
+
 func (e *NoK8sNetworkError) Error() string { return string(e.message) }
 
 type defaultKubeClient struct {
@@ -53,6 +59,10 @@ func (d *defaultKubeClient) GetPod(namespace, name string) (*v1.Pod, error) {
 	return d.client.Core().Pods(namespace).Get(name, metav1.GetOptions{})
 }
 
+func (d *defaultKubeClient) SetPod(namespace string, pod *v1.Pod) (*v1.Pod, error) {
+	return d.client.Core().Pods(namespace).Update(pod)
+}
+
 func createK8sClient(kubeconfig string) (KubeClient, error) {
 	// uses the current context in kubeconfig
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
@@ -67,6 +77,54 @@ func createK8sClient(kubeconfig string) (KubeClient, error) {
 	}
 
 	return &defaultKubeClient{client: client}, nil
+}
+
+func setKubeClientInfo(c *ClientInfo, client KubeClient, k8sArgs types.K8sArgs) {
+	c.Client = client
+	c.Podnamespace = string(k8sArgs.K8S_POD_NAMESPACE)
+	c.Podname = string(k8sArgs.K8S_POD_NAME)
+}
+
+func SetNetworkStatus(k *ClientInfo, netStatus []*types.NetworkStatus) error {
+
+	pod, err := k.Client.GetPod(k.Podnamespace, k.Podname)
+	if err != nil {
+		return fmt.Errorf("SetNetworkStatus: failed to query the pod %v in out of cluster comm: %v", k.Podname, err)
+	}
+
+	var networkStatus []string
+	for _, nets := range netStatus {
+		data, err := json.MarshalIndent(nets, "", "    ")
+		if err != nil {
+			return fmt.Errorf("SetNetworkStatus: error with Marshal Indent: %v", err)
+		}
+		networkStatus = append(networkStatus, string(data))
+	}
+
+	ns := fmt.Sprintf("[%s]", strings.Join(networkStatus, ","))
+
+	_, err = setPodNetworkAnnotation(k.Client, k.Podnamespace, pod, ns)
+	if err != nil {
+		return fmt.Errorf("SetNetworkStatus: failed to update the pod %v in out of cluster comm: %v", k.Podname, err)
+	}
+
+	return nil
+}
+
+func setPodNetworkAnnotation(client KubeClient, namespace string, pod *v1.Pod, ns string) (*v1.Pod, error) {
+	//pod annotations is empty
+	if len(pod.Annotations) == 0 {
+		pod.Annotations = make(map[string]string)
+	}
+
+	pod.Annotations["kubernetes.v1.cni.cncf.io/networks-status"] = ns
+
+	p, err := client.SetPod(namespace, pod)
+	if err != nil {
+		return nil, fmt.Errorf("setPodNetworkAnnotation: failed to set the pod %v in out of cluster comm: %v", pod.ObjectMeta.Name, err)
+	}
+
+	return p, nil
 }
 
 func getPodNetworkAnnotation(client KubeClient, k8sArgs types.K8sArgs) (string, string, error) {
@@ -311,35 +369,38 @@ func getKubernetesDelegate(client KubeClient, net *types.NetworkSelectionElement
 type KubeClient interface {
 	GetRawWithPath(path string) ([]byte, error)
 	GetPod(namespace, name string) (*v1.Pod, error)
+	SetPod(namespace string, pod *v1.Pod) (*v1.Pod, error)
 }
 
-func GetK8sNetwork(args *skel.CmdArgs, kubeconfig string, k8sclient KubeClient, confdir string) ([]*types.DelegateNetConf, error) {
+func GetK8sNetwork(args *skel.CmdArgs, kubeconfig string, k8sclient KubeClient, confdir string) ([]*types.DelegateNetConf, *ClientInfo, error) {
 	k8sArgs := types.K8sArgs{}
+	clientInfo := &ClientInfo{}
 
 	err := cnitypes.LoadArgs(args.Args, &k8sArgs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if k8sclient == nil {
 		k8sclient, err = createK8sClient(kubeconfig)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		setKubeClientInfo(clientInfo, k8sclient, k8sArgs)
 	}
 
 	netAnnot, defaultNamespace, err := getPodNetworkAnnotation(k8sclient, k8sArgs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if len(netAnnot) == 0 {
-		return nil, &NoK8sNetworkError{"no kubernetes network found"}
+		return nil, clientInfo, &NoK8sNetworkError{"no kubernetes network found"}
 	}
 
 	networks, err := parsePodNetworkAnnotation(netAnnot, defaultNamespace)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Read all network objects referenced by 'networks'
@@ -347,10 +408,10 @@ func GetK8sNetwork(args *skel.CmdArgs, kubeconfig string, k8sclient KubeClient, 
 	for _, net := range networks {
 		delegate, err := getKubernetesDelegate(k8sclient, net, confdir)
 		if err != nil {
-			return nil, fmt.Errorf("GetK8sNetwork: failed getting the delegate: %v", err)
+			return nil, nil, fmt.Errorf("GetK8sNetwork: failed getting the delegate: %v", err)
 		}
 		delegates = append(delegates, delegate)
 	}
 
-	return delegates, nil
+	return delegates, clientInfo, nil
 }
