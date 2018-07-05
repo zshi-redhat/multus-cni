@@ -180,7 +180,6 @@ func cmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) (cn
 	}
 
 	var result, tmpResult cnitypes.Result
-	var netStatus []*types.NetworkStatus
 	lastIdx := 0
 	for idx, delegate := range n.Delegates {
 		lastIdx = idx
@@ -202,7 +201,7 @@ func cmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) (cn
 				return nil, fmt.Errorf("Multus: Err rethe networks status: %v", err)
 			}
 
-			netStatus = append(netStatus, delegateNetStatus)
+			n.AddNetworkStatus(delegateNetStatus)
 		}
 	}
 
@@ -214,7 +213,7 @@ func cmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) (cn
 
 	//set the network status annotation in apiserver, only in case Multus as kubeconfig
 	if n.Kubeconfig != "" {
-		err = k8s.SetNetworkStatus(kc, netStatus)
+		err = k8s.SetNetworkStatus(kc, n.NetStatus)
 		if err != nil {
 			return nil, fmt.Errorf("Multus: Err set the networks status: %v", err)
 		}
