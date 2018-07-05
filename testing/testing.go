@@ -92,6 +92,11 @@ func (f *FakeKubeClient) GetPod(namespace, name string) (*v1.Pod, error) {
 	return pod, nil
 }
 
+func (f *FakeKubeClient) SetPod(namespace string, pod *v1.Pod) (*v1.Pod, error) {
+	//TODO
+	return pod, nil
+}
+
 func (f *FakeKubeClient) AddPod(pod *v1.Pod) {
 	key := fmt.Sprintf("%s/%s", pod.ObjectMeta.Namespace, pod.ObjectMeta.Name)
 	f.pods[key] = pod
