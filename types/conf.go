@@ -146,7 +146,7 @@ func (n *NetConf) AddDelegates(newDelegates []*DelegateNetConf) error {
 }
 
 // AddNetworkStatus appends the new network status to the network status list
-func (n *NetConf) AddNetworkStatus(newNetStatus []*NetworkStatus) error {
-	n.NetStatus = append(n.NetStatus, newNetStatus...)
+func (n *NetConf) AddNetworkStatus(newNetStatus *NetworkStatus) error {
+	n.NetStatus = append(n.NetStatus, newNetStatus)
 	return nil
 }
