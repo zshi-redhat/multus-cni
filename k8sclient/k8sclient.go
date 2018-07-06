@@ -386,8 +386,9 @@ func GetK8sNetwork(args *skel.CmdArgs, kubeconfig string, k8sclient KubeClient, 
 		if err != nil {
 			return nil, nil, err
 		}
-		setKubeClientInfo(clientInfo, k8sclient, k8sArgs)
 	}
+
+	setKubeClientInfo(clientInfo, k8sclient, k8sArgs)
 
 	netAnnot, defaultNamespace, err := getPodNetworkAnnotation(k8sclient, k8sArgs)
 	if err != nil {
