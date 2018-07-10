@@ -111,13 +111,13 @@ func SetNetworkStatus(k *ClientInfo, netStatus []*types.NetworkStatus) error {
 	return nil
 }
 
-func setPodNetworkAnnotation(client KubeClient, namespace string, pod *v1.Pod, ns string) (*v1.Pod, error) {
-	//pod annotations is empty
+func setPodNetworkAnnotation(client KubeClient, namespace string, pod *v1.Pod, networkstatus string) (*v1.Pod, error) {
+	//if pod annotations is empty, make sure it allocatable
 	if len(pod.Annotations) == 0 {
 		pod.Annotations = make(map[string]string)
 	}
 
-	pod.Annotations["kubernetes.v1.cni.cncf.io/networks-status"] = ns
+	pod.Annotations["kubernetes.v1.cni.cncf.io/networks-status"] = networkstatus
 
 	p, err := client.SetPod(namespace, pod)
 	if err != nil {
