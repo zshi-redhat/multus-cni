@@ -39,6 +39,8 @@ type NetConf struct {
 	Delegates    []*DelegateNetConf       `json:"-"`
 	NetStatus    []*NetworkStatus         `json:"-"`
 	Kubeconfig   string                   `json:"kubeconfig"`
+	Logging      string                   `json:"logging"`
+	LoggingLevel string                   `json:"logging_level"`
 }
 
 type NetworkStatus struct {
