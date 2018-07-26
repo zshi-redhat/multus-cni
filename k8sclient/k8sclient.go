@@ -69,7 +69,7 @@ func createK8sClient(kubeconfig string) (KubeClient, error) {
 	return &defaultKubeClient{client: client}, nil
 }
 
-func getPodNetworkAnnotation(client KubeClient, k8sArgs types.K8sArgs) (string, string, error) {
+func getPodNetworkAnnotation(client KubeClient, k8sArgs *types.K8sArgs) (string, string, error) {
 	var err error
 
 	pod, err := client.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
@@ -166,10 +166,8 @@ func getCNIConfigFromFile(name string, confdir string) ([]byte, error) {
 	// or .config (in that order) file on-disk whose JSON
 	// “name” key matches this Network object’s name.
 
-	//Todo
-	// support conflist for chaining mechanism
 	// In part, adapted from K8s pkg/kubelet/dockershim/network/cni/cni.go#getDefaultCNINetwork
-	files, err := libcni.ConfFiles(confdir, []string{".conf", ".json"})
+	files, err := libcni.ConfFiles(confdir, []string{".conf", ".json", ".conflist"})
 	switch {
 	case err != nil:
 		return nil, fmt.Errorf("No networks found in %s", confdir)
@@ -178,18 +176,34 @@ func getCNIConfigFromFile(name string, confdir string) ([]byte, error) {
 	}
 
 	for _, confFile := range files {
-		conf, err := libcni.ConfFromFile(confFile)
-		if err != nil {
-			return nil, fmt.Errorf("Error loading CNI config file %s: %v", confFile, err)
-		}
-
-		if conf.Network.Name == name {
-			// Ensure the config has a "type" so we know what plugin to run.
-			// Also catches the case where somebody put a conflist into a conf file.
-			if conf.Network.Type == "" {
-				return nil, fmt.Errorf("Error loading CNI config file %s: no 'type'; perhaps this is a .conflist?", confFile)
+		var confList *libcni.NetworkConfigList
+		if strings.HasSuffix(confFile, ".conflist") {
+			confList, err = libcni.ConfListFromFile(confFile)
+			if err != nil {
+				return nil, fmt.Errorf("Error loading CNI conflist file %s: %v", confFile, err)
 			}
-			return conf.Bytes, nil
+
+			if confList.Name == name {
+				if len(confList.Plugins) == 0 {
+					return nil, fmt.Errorf("CNI config list %s has no networks, skipping", confFile)
+				}
+				return confList.Bytes, nil
+			}
+
+		} else {
+			conf, err := libcni.ConfFromFile(confFile)
+			if err != nil {
+				return nil, fmt.Errorf("Error loading CNI config file %s: %v", confFile, err)
+			}
+
+			if conf.Network.Name == name {
+				// Ensure the config has a "type" so we know what plugin to run.
+				// Also catches the case where somebody put a conflist into a conf file.
+				if conf.Network.Type == "" {
+					return nil, fmt.Errorf("Error loading CNI config file %s: no 'type'; perhaps this is a .conflist?", confFile)
+				}
+				return conf.Bytes, nil
+			}
 		}
 	}
 
@@ -225,7 +239,7 @@ func cniConfigFromNetworkResource(customResource *types.NetworkAttachmentDefinit
 	var err error
 
 	emptySpec := types.NetworkAttachmentDefinitionSpec{}
-	if (customResource.Spec == emptySpec) {
+	if customResource.Spec == emptySpec {
 		// Network Spec empty; generate delegate from CNI JSON config
 		// from the configuration directory that has the same network
 		// name as the custom resource
@@ -276,15 +290,21 @@ type KubeClient interface {
 	GetPod(namespace, name string) (*v1.Pod, error)
 }
 
-func GetK8sNetwork(args *skel.CmdArgs, kubeconfig string, k8sclient KubeClient, confdir string) ([]*types.DelegateNetConf, error) {
-	k8sArgs := types.K8sArgs{}
+func GetK8sArgs(args *skel.CmdArgs) (*types.K8sArgs, error) {
+	k8sArgs := &types.K8sArgs{}
 
-	err := cnitypes.LoadArgs(args.Args, &k8sArgs)
+	err := cnitypes.LoadArgs(args.Args, k8sArgs)
 	if err != nil {
 		return nil, err
 	}
 
+	return k8sArgs, nil
+}
+
+func GetK8sNetwork(k8sArgs *types.K8sArgs, kubeconfig string, k8sclient KubeClient, confdir string) ([]*types.DelegateNetConf, error) {
+
 	if k8sclient == nil {
+		var err error
 		k8sclient, err = createK8sClient(kubeconfig)
 		if err != nil {
 			return nil, err
