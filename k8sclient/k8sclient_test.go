@@ -77,17 +77,19 @@ var _ = Describe("k8sclient operations", func() {
 		// net3 is not used; make sure it's not accessed
 		fKubeClient.AddNetConfig(fakePod.ObjectMeta.Namespace, "net3", net3)
 
-		delegates, err := GetK8sNetwork(args, "", fKubeClient, tmpDir)
+		k8sArgs, err := GetK8sArgs(args)
+		Expect(err).NotTo(HaveOccurred())
+		delegates, err := GetK8sNetwork(k8sArgs, "", fKubeClient, tmpDir)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(fKubeClient.PodCount).To(Equal(1))
 		Expect(fKubeClient.NetCount).To(Equal(2))
 
 		Expect(len(delegates)).To(Equal(2))
-		Expect(delegates[0].Name).To(Equal("net1"))
-		Expect(delegates[0].Type).To(Equal("mynet"))
+		Expect(delegates[0].Conf.Name).To(Equal("net1"))
+		Expect(delegates[0].Conf.Type).To(Equal("mynet"))
 		Expect(delegates[0].MasterPlugin).To(BeFalse())
-		Expect(delegates[1].Name).To(Equal("net2"))
-		Expect(delegates[1].Type).To(Equal("mynet2"))
+		Expect(delegates[1].Conf.Name).To(Equal("net2"))
+		Expect(delegates[1].Conf.Type).To(Equal("mynet2"))
 		Expect(delegates[1].MasterPlugin).To(BeFalse())
 	})
 
@@ -106,7 +108,9 @@ var _ = Describe("k8sclient operations", func() {
 		fKubeClient.AddPod(fakePod)
 		fKubeClient.AddNetConfig(fakePod.ObjectMeta.Namespace, "net3", net3)
 
-		delegates, err := GetK8sNetwork(args, "", fKubeClient, tmpDir)
+		k8sArgs, err := GetK8sArgs(args)
+		Expect(err).NotTo(HaveOccurred())
+		delegates, err := GetK8sNetwork(k8sArgs, "", fKubeClient, tmpDir)
 		Expect(len(delegates)).To(Equal(0))
 		Expect(err).To(MatchError("GetK8sNetwork: failed getting the delegate: getKubernetesDelegate: failed to get network resource, refer Multus README.md for the usage guide: resource not found"))
 	})
@@ -146,18 +150,20 @@ var _ = Describe("k8sclient operations", func() {
 	"cniVersion": "0.2.0"
 }`)
 
-		delegates, err := GetK8sNetwork(args, "", fKubeClient, tmpDir)
+		k8sArgs, err := GetK8sArgs(args)
+		Expect(err).NotTo(HaveOccurred())
+		delegates, err := GetK8sNetwork(k8sArgs, "", fKubeClient, tmpDir)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(fKubeClient.PodCount).To(Equal(1))
 		Expect(fKubeClient.NetCount).To(Equal(3))
 
 		Expect(len(delegates)).To(Equal(3))
-		Expect(delegates[0].Name).To(Equal("net1"))
-		Expect(delegates[0].Type).To(Equal("mynet"))
-		Expect(delegates[1].Name).To(Equal("net2"))
-		Expect(delegates[1].Type).To(Equal("mynet2"))
-		Expect(delegates[2].Name).To(Equal("net3"))
-		Expect(delegates[2].Type).To(Equal("mynet3"))
+		Expect(delegates[0].Conf.Name).To(Equal("net1"))
+		Expect(delegates[0].Conf.Type).To(Equal("mynet"))
+		Expect(delegates[1].Conf.Name).To(Equal("net2"))
+		Expect(delegates[1].Conf.Type).To(Equal("mynet2"))
+		Expect(delegates[2].Conf.Name).To(Equal("net3"))
+		Expect(delegates[2].Conf.Type).To(Equal("mynet3"))
 	})
 
 	It("fails when the JSON format annotation is invalid", func() {
@@ -169,7 +175,9 @@ var _ = Describe("k8sclient operations", func() {
 		fKubeClient := testutils.NewFakeKubeClient()
 		fKubeClient.AddPod(fakePod)
 
-		delegates, err := GetK8sNetwork(args, "", fKubeClient, tmpDir)
+		k8sArgs, err := GetK8sArgs(args)
+		Expect(err).NotTo(HaveOccurred())
+		delegates, err := GetK8sNetwork(k8sArgs, "", fKubeClient, tmpDir)
 		Expect(len(delegates)).To(Equal(0))
 		Expect(err).To(MatchError("parsePodNetworkAnnotation: failed to parse pod Network Attachment Selection Annotation JSON format: invalid character 'a' looking for beginning of value"))
 	})
@@ -195,16 +203,18 @@ var _ = Describe("k8sclient operations", func() {
 	"cniVersion": "0.2.0"
 }`)
 
-		delegates, err := GetK8sNetwork(args, "", fKubeClient, tmpDir)
+		k8sArgs, err := GetK8sArgs(args)
+		Expect(err).NotTo(HaveOccurred())
+		delegates, err := GetK8sNetwork(k8sArgs, "", fKubeClient, tmpDir)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(fKubeClient.PodCount).To(Equal(1))
 		Expect(fKubeClient.NetCount).To(Equal(2))
 
 		Expect(len(delegates)).To(Equal(2))
-		Expect(delegates[0].Name).To(Equal("net1"))
-		Expect(delegates[0].Type).To(Equal("mynet"))
-		Expect(delegates[1].Name).To(Equal("net2"))
-		Expect(delegates[1].Type).To(Equal("mynet2"))
+		Expect(delegates[0].Conf.Name).To(Equal("net1"))
+		Expect(delegates[0].Conf.Type).To(Equal("mynet"))
+		Expect(delegates[1].Conf.Name).To(Equal("net2"))
+		Expect(delegates[1].Conf.Type).To(Equal("mynet2"))
 	})
 
 	It("injects network name into minimal thick plugin CNI config", func() {
@@ -217,14 +227,16 @@ var _ = Describe("k8sclient operations", func() {
 		fKubeClient.AddPod(fakePod)
 		fKubeClient.AddNetConfig(fakePod.ObjectMeta.Namespace, "net1", "{\"type\": \"mynet\"}")
 
-		delegates, err := GetK8sNetwork(args, "", fKubeClient, tmpDir)
+		k8sArgs, err := GetK8sArgs(args)
+		Expect(err).NotTo(HaveOccurred())
+		delegates, err := GetK8sNetwork(k8sArgs, "", fKubeClient, tmpDir)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(fKubeClient.PodCount).To(Equal(1))
 		Expect(fKubeClient.NetCount).To(Equal(1))
 
 		Expect(len(delegates)).To(Equal(1))
-		Expect(delegates[0].Name).To(Equal("net1"))
-		Expect(delegates[0].Type).To(Equal("mynet"))
+		Expect(delegates[0].Conf.Name).To(Equal("net1"))
+		Expect(delegates[0].Conf.Type).To(Equal("mynet"))
 	})
 
 	It("fails when on-disk config file is not valid", func() {
@@ -244,7 +256,9 @@ var _ = Describe("k8sclient operations", func() {
 		net2Name := filepath.Join(tmpDir, "20-net2.conf")
 		fKubeClient.AddNetFile(fakePod.ObjectMeta.Namespace, "net2", net2Name, "asdfasdfasfdasfd")
 
-		delegates, err := GetK8sNetwork(args, "", fKubeClient, tmpDir)
+		k8sArgs, err := GetK8sArgs(args)
+		Expect(err).NotTo(HaveOccurred())
+		delegates, err := GetK8sNetwork(k8sArgs, "", fKubeClient, tmpDir)
 		Expect(len(delegates)).To(Equal(0))
 		Expect(err).To(MatchError(fmt.Sprintf("GetK8sNetwork: failed getting the delegate: cniConfigFromNetworkResource: err in getCNIConfigFromFile: Error loading CNI config file %s: error parsing configuration: invalid character 'a' looking for beginning of value", net2Name)))
 	})
