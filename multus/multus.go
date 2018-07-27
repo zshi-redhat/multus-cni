@@ -213,7 +213,7 @@ func cmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) (cn
 	}
 
 	//set the network status annotation in apiserver, only in case Multus as kubeconfig
-	if n.Kubeconfig != "" {
+	if n.Kubeconfig != "" && kc.Podnamespace != "kube-system" {
 		err = k8s.SetNetworkStatus(kc, netStatus)
 		if err != nil {
 			return nil, fmt.Errorf("Multus: Err set the networks status: %v", err)
@@ -277,7 +277,7 @@ func cmdDel(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) err
 	}
 
 	//unset the network status annotation in apiserver, only in case Multus as kubeconfig
-	if in.Kubeconfig != "" {
+	if in.Kubeconfig != "" && kc.Podnamespace != "kube-system" {
 		err := k8s.SetNetworkStatus(kc, nil)
 		if err != nil {
 			return fmt.Errorf("Multus: Err unset the networks status: %v", err)
