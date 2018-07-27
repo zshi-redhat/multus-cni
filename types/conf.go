@@ -19,10 +19,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/intel/multus-cni/logging"
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/containernetworking/cni/pkg/version"
+	"github.com/intel/multus-cni/logging"
 )
 
 const (
@@ -155,11 +155,5 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 // AddDelegates appends the new delegates to the delegates list
 func (n *NetConf) AddDelegates(newDelegates []*DelegateNetConf) error {
 	n.Delegates = append(n.Delegates, newDelegates...)
-	return nil
-}
-
-// AddNetworkStatus appends the new network status to the network status list
-func (n *NetConf) AddNetworkStatus(newNetStatus *NetworkStatus) error {
-	n.NetStatus = append(n.NetStatus, newNetStatus)
 	return nil
 }

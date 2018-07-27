@@ -180,6 +180,7 @@ func cmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) (cn
 	}
 
 	var result, tmpResult cnitypes.Result
+	var netStatus []*types.NetworkStatus
 	lastIdx := 0
 	for idx, delegate := range n.Delegates {
 		lastIdx = idx
@@ -198,10 +199,10 @@ func cmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) (cn
 		if n.Kubeconfig != "" {
 			delegateNetStatus, err := types.LoadNetworkStatus(tmpResult, delegate.Name, delegate.MasterPlugin)
 			if err != nil {
-				return nil, fmt.Errorf("Multus: Err rethe networks status: %v", err)
+				return nil, fmt.Errorf("Multus: Err in setting  networks status: %v", err)
 			}
 
-			n.AddNetworkStatus(delegateNetStatus)
+			netStatus = append(netStatus, delegateNetStatus)
 		}
 	}
 
@@ -213,7 +214,7 @@ func cmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) (cn
 
 	//set the network status annotation in apiserver, only in case Multus as kubeconfig
 	if n.Kubeconfig != "" {
-		err = k8s.SetNetworkStatus(kc, n.NetStatus)
+		err = k8s.SetNetworkStatus(kc, netStatus)
 		if err != nil {
 			return nil, fmt.Errorf("Multus: Err set the networks status: %v", err)
 		}
@@ -235,6 +236,7 @@ func cmdGet(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) (cn
 
 func cmdDel(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) error {
 	var nopodnet bool
+	var kc *k8s.ClientInfo
 
 	in, err := types.LoadNetConf(args.StdinData)
 	if err != nil {
@@ -242,7 +244,10 @@ func cmdDel(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) err
 	}
 
 	if in.Kubeconfig != "" {
-		delegates, _, err := k8s.GetK8sNetwork(args, in.Kubeconfig, kubeClient, in.ConfDir)
+		var err error
+		var delegates []*types.DelegateNetConf
+
+		delegates, kc, err = k8s.GetK8sNetwork(args, in.Kubeconfig, kubeClient, in.ConfDir)
 		if err != nil {
 			if _, ok := err.(*k8s.NoK8sNetworkError); ok {
 				nopodnet = true
@@ -268,6 +273,14 @@ func cmdDel(args *skel.CmdArgs, exec invoke.Exec, kubeClient k8s.KubeClient) err
 
 		if err := json.Unmarshal(netconfBytes, &in.Delegates); err != nil {
 			return fmt.Errorf("Multus: failed to load netconf: %v", err)
+		}
+	}
+
+	//unset the network status annotation in apiserver, only in case Multus as kubeconfig
+	if in.Kubeconfig != "" {
+		err := k8s.SetNetworkStatus(kc, nil)
+		if err != nil {
+			return fmt.Errorf("Multus: Err unset the networks status: %v", err)
 		}
 	}
 

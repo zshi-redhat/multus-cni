@@ -20,10 +20,11 @@ import (
 	"regexp"
 	"strings"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	v1 "k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/retry"
 
 	"github.com/containernetworking/cni/libcni"
 	"github.com/containernetworking/cni/pkg/skel"
@@ -59,8 +60,8 @@ func (d *defaultKubeClient) GetPod(namespace, name string) (*v1.Pod, error) {
 	return d.client.Core().Pods(namespace).Get(name, metav1.GetOptions{})
 }
 
-func (d *defaultKubeClient) SetPod(namespace string, pod *v1.Pod) (*v1.Pod, error) {
-	return d.client.Core().Pods(namespace).Update(pod)
+func (d *defaultKubeClient) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {
+	return d.client.Core().Pods(pod.Namespace).UpdateStatus(pod)
 }
 
 func createK8sClient(kubeconfig string) (KubeClient, error) {
@@ -92,17 +93,19 @@ func SetNetworkStatus(k *ClientInfo, netStatus []*types.NetworkStatus) error {
 		return fmt.Errorf("SetNetworkStatus: failed to query the pod %v in out of cluster comm: %v", k.Podname, err)
 	}
 
-	var networkStatus []string
-	for _, nets := range netStatus {
-		data, err := json.MarshalIndent(nets, "", "    ")
-		if err != nil {
-			return fmt.Errorf("SetNetworkStatus: error with Marshal Indent: %v", err)
+	var ns string
+	if netStatus != nil {
+		var networkStatus []string
+		for _, nets := range netStatus {
+			data, err := json.MarshalIndent(nets, "", "    ")
+			if err != nil {
+				return fmt.Errorf("SetNetworkStatus: error with Marshal Indent: %v", err)
+			}
+			networkStatus = append(networkStatus, string(data))
 		}
-		networkStatus = append(networkStatus, string(data))
+
+		ns = fmt.Sprintf("[%s]", strings.Join(networkStatus, ","))
 	}
-
-	ns := fmt.Sprintf("[%s]", strings.Join(networkStatus, ","))
-
 	_, err = setPodNetworkAnnotation(k.Client, k.Podnamespace, pod, ns)
 	if err != nil {
 		return fmt.Errorf("SetNetworkStatus: failed to update the pod %v in out of cluster comm: %v", k.Podname, err)
@@ -117,14 +120,25 @@ func setPodNetworkAnnotation(client KubeClient, namespace string, pod *v1.Pod, n
 		pod.Annotations = make(map[string]string)
 	}
 
-	pod.Annotations["kubernetes.v1.cni.cncf.io/networks-status"] = networkstatus
+	pod.Annotations["k8s.v1.cni.cncf.io/networks-status"] = networkstatus
 
-	p, err := client.SetPod(namespace, pod)
-	if err != nil {
-		return nil, fmt.Errorf("setPodNetworkAnnotation: failed to set the pod %v in out of cluster comm: %v", pod.ObjectMeta.Name, err)
+	pod = pod.DeepCopy()
+	var err error
+	if resultErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if err != nil {
+			// Re-get the pod unless it's the first attempt to update
+			pod, err = client.GetPod(pod.Namespace, pod.Name)
+			if err != nil {
+				return err
+			}
+		}
+
+		pod, err = client.UpdatePodStatus(pod)
+		return err
+	}); resultErr != nil {
+		return nil, fmt.Errorf("status update failed for pod %s/%s: %v", pod.Namespace, pod.Name, resultErr)
 	}
-
-	return p, nil
+	return pod, nil
 }
 
 func getPodNetworkAnnotation(client KubeClient, k8sArgs types.K8sArgs) (string, string, error) {
@@ -283,7 +297,7 @@ func cniConfigFromNetworkResource(customResource *types.NetworkAttachmentDefinit
 	var err error
 
 	emptySpec := types.NetworkAttachmentDefinitionSpec{}
-	if (customResource.Spec == emptySpec) {
+	if customResource.Spec == emptySpec {
 		// Network Spec empty; generate delegate from CNI JSON config
 		// from the configuration directory that has the same network
 		// name as the custom resource
@@ -332,7 +346,7 @@ func getKubernetesDelegate(client KubeClient, net *types.NetworkSelectionElement
 type KubeClient interface {
 	GetRawWithPath(path string) ([]byte, error)
 	GetPod(namespace, name string) (*v1.Pod, error)
-	SetPod(namespace string, pod *v1.Pod) (*v1.Pod, error)
+	UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error)
 }
 
 func GetK8sNetwork(args *skel.CmdArgs, kubeconfig string, k8sclient KubeClient, confdir string) ([]*types.DelegateNetConf, *ClientInfo, error) {
