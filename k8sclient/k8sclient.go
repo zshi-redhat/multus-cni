@@ -383,6 +383,7 @@ func getKubernetesDelegate(client KubeClient, net *types.NetworkSelectionElement
 		}
 	}
 
+
 	// DEVICE_ID
 	// Get resourceName annotation from NetDefinition
 	deviceID := ""
@@ -397,6 +398,7 @@ func getKubernetesDelegate(client KubeClient, net *types.NetworkSelectionElement
 			}
 		}
 	}
+
 
 	configBytes, err := cniConfigFromNetworkResource(customResource, confdir)
 	if err != nil {
