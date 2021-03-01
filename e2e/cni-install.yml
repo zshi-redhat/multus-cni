@@ -6,6 +6,7 @@ metadata:
   namespace: kube-system
 data:
   install_cni.sh: |
+    yum install -y wget
     cd /tmp
     wget https://github.com/containernetworking/plugins/releases/download/v0.8.5/cni-plugins-linux-amd64-v0.8.5.tgz
     cd /host/opt/cni/bin
