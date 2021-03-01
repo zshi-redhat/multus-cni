@@ -171,7 +171,7 @@ spec:
       serviceAccountName: multus
       containers:
       - name: kube-multus
-        image: docker.io/nfvpe/multus:stable
+        image: quay.io/zshi/multus-cni:stable
         command: ["/entrypoint.sh"]
         args:
         - "--multus-conf-file=auto"
