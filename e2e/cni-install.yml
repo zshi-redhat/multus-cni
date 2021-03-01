@@ -36,7 +36,7 @@ spec:
         effect: NoSchedule
       containers:
       - name: install-cni-plugins
-        image: alpine
+        image: quay.io/zshi/centos:httpd-iperf
         command: ["/bin/sh", "/scripts/install_cni.sh"]
         resources:
           requests:
